@@ -7,7 +7,7 @@ while true; do
 	clear
 	echo " === Installazione Nethserver 8, swap, aggiornamenti automatici e notifiche backup ==="
 	echo ""
-	echo "1 - Installazione automatica"
+	echo "1 - Installazione guidata"
 	echo "2 - Modifica Swap"
 	echo "3 - Modifica notifiche mail"
 	echo "4 - Attiva aggiornamenti automatici Rocky Linux"
