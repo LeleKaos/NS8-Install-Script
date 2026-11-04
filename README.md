@@ -1,86 +1,111 @@
 # NS8 Install Script
 
-Script Bash interattivo per preparare un server **Rocky Linux** e installare **NethServer 8**: imposta lo swap, attiva gli aggiornamenti automatici del sistema e configura le notifiche e-mail sull'esito dei backup.
+Script Bash interattivo per preparare un server **Rocky Linux** e installare **NethServer 8**: rete, swap, aggiornamenti automatici del sistema e notifiche e-mail sull'esito dei backup.
 
-Versione corrente: **2.0** (`ns8-install-2.0.sh`)
+Dalla versione 3.0 l'interfaccia usa `whiptail`, con menu a finestre in stile `raspi-config`.
+
+| Versione | File | Note |
+|---|---|---|
+| **3.0** (consigliata) | `ns8-install-3.0.sh` | Interfaccia grafica, installazione guidata a scelta |
+| 2.0 | `ns8-install-2.0.sh` | Menu testuale, mantenuta per compatibilità |
 
 ## Requisiti
 
-- Rocky Linux (o un'altra distribuzione RHEL-like con `dnf` e `nmtui`) appena installato
-- Accesso come **root**
+- Rocky Linux (o un'altra distribuzione RHEL-like con `dnf` e `nmtui`)
+- Accesso come **root**: lo script si ferma se non lo è
 - Connessione a Internet (per `dnf` e per scaricare l'installer ufficiale di NethServer 8)
+- `whiptail` (pacchetto `newt`): se manca, lo script lo installa da solo
 
 ## Utilizzo
 
 ```bash
-curl -O https://raw.githubusercontent.com/LeleKaos/NS8-Install-Script/main/ns8-install-2.0.sh
+curl -O https://raw.githubusercontent.com/LeleKaos/NS8-Install-Script/main/ns8-install-3.0.sh
 ```
 
 ```bash
-chmod +x ns8-install-2.0.sh
+chmod +x ns8-install-3.0.sh
 ```
 
 ```bash
-sudo ./ns8-install-2.0.sh
+sudo ./ns8-install-3.0.sh
 ```
 
-All'avvio compare un menu:
+All'avvio compare il menu principale, che in cima mostra se NethServer 8 è installato e quanto swap è attivo:
 
 ```
- === Installazione Nethserver 8, swap, aggiornamenti automatici e notifiche backup ===
-
-1 - Installazione guidata
-2 - Modifica Swap
-3 - Modifica notifiche mail
-4 - Attiva aggiornamenti automatici Rocky Linux
-5 - Modifica Rete
-6 - Installa SOLO Nethserver 8 senza modifiche
-0 - Esci
+┌──────────────── NS8 Install Script v3.0 ────────────────┐
+│ NethServer 8: non installato  |  Swap: 0 MB             │
+│                                                         │
+│ Scegli un'opzione:                                      │
+│                                                         │
+│   1  Installazione guidata                              │
+│   2  Swap                                               │
+│   3  Aggiornamenti automatici Rocky Linux               │
+│   4  Notifiche e-mail sui backup                        │
+│   5  Rete e hostname (nmtui)                            │
+│   6  Installa solo NethServer 8                         │
+│                                                         │
+│          <Seleziona>              <Esci>                │
+└─────────────────────────────────────────────────────────┘
 ```
 
-Il menu torna a comparire dopo ogni operazione, finché non scegli `0`.
+Comandi: frecce per muoversi, **INVIO** per confermare, **TAB** per passare ai pulsanti, **SPAZIO** per spuntare le caselle.
 
-## Le opzioni del menu
+## Installazione guidata
 
-### 1 - Installazione guidata
+1. **Scelta delle operazioni**: una lista di caselle permette di decidere cosa configurare:
+   - Rete e hostname (nmtui), non spuntata di default
+   - Swap
+   - Aggiornamenti automatici Rocky Linux
+   - Installa NethServer 8 (non spuntata se NS8 è già installato)
+   - Notifiche e-mail sui backup
 
-Esegue tutte le operazioni una dopo l'altra:
+   Se scegli le notifiche senza NethServer 8, e NS8 non è installato, lo script propone di aggiungere anche la sua installazione.
+2. **Parametri**: lo script fa all'inizio tutte le domande che servono per le operazioni scelte:
+   - dimensione dello swap
+   - orario degli aggiornamenti e se installarli in automatico
+   - indirizzi e-mail di destinatario e mittente
 
-1. **Raccolta dati**: chiede l'indirizzo e-mail del **destinatario** delle notifiche, quello del **mittente** e la dimensione dello swap in MB (predefinita `4096`). Ogni valore va confermato con `s`/`n`.
-2. **Swap**: crea (o ricrea) `/swapfile` della dimensione scelta, lo attiva e lo aggiunge a `/etc/fstab`.
-3. **Aggiornamenti automatici**: lancia `dnf upgrade -y`, installa `dnf-automatic`, `curl` e `nano`, poi attiva il timer `dnf-automatic.timer` con un override che lo programma ogni giorno alle **6:00** (con un ritardo casuale fino a 10 minuti).
-4. **NethServer 8**: se `/var/lib/nethserver` non esiste, scarica ed esegue l'installer ufficiale:
-   `https://raw.githubusercontent.com/NethServer/ns8-core/ns8-stable/core/install.sh`.
-   Se NethServer è già installato, salta questo passaggio.
-5. **Notifiche backup**: crea l'hook
-   `/var/lib/nethserver/cluster/events/backup-status-changed/20notify`
-   (vedi [Notifiche e-mail sui backup](#notifiche-e-mail-sui-backup)).
+   Premendo **Annulla** in qualunque momento l'installazione viene annullata senza modificare nulla.
+3. **Riepilogo**: mostra cosa verrà fatto e chiede conferma.
+4. **Esecuzione**: dopo la conferma tutto procede senza altre domande, in questo ordine: rete → swap → aggiornamenti → NethServer 8 → notifiche.
+5. **Esito**: una schermata finale mostra lo stato di ogni passo (`[OK]`, `[ERRORE]`, `[SALTATO]`).
+
+Le notifiche vengono configurate **solo dopo** che NethServer 8 è installato. Se l'installazione di NS8 fallisce, le notifiche risultano `[SALTATO]` e non producono errori.
 
 Alla fine, crea il cluster dall'interfaccia web di NethServer 8 e configura lì il server SMTP per l'invio delle notifiche.
 
-### 2 - Modifica Swap
+## Le singole voci del menu
 
-Chiede la nuova dimensione (deve essere un intero **maggiore di 1024** MB, predefinita 4096). Poi disattiva lo `/swapfile` esistente, lo ricrea della nuova dimensione e lo riattiva.
+### 2 - Swap
 
-### 3 - Modifica notifiche mail
+Chiede la dimensione in MB (minimo **1024**, predefinita 4096) e controlla che sul disco ci sia spazio sufficiente, con almeno 1 GB di margine. Poi disattiva lo `/swapfile` esistente, lo ricrea e lo riattiva.
 
-Funziona solo se NethServer 8 è già installato. Chiede di nuovo il destinatario e il mittente e riscrive l'hook `20notify` con i nuovi indirizzi.
+In `/etc/fstab` resta **una sola** riga per lo swapfile: vengono rimossi anche gli eventuali duplicati lasciati dalla versione 2.0. Prima della modifica viene salvata una copia in `/etc/fstab.bak-ns8-install`.
 
-### 4 - Attiva aggiornamenti automatici Rocky Linux
+### 3 - Aggiornamenti automatici Rocky Linux
 
-Esegue da sola la parte "aggiornamenti automatici" dell'installazione guidata: `dnf upgrade`, installa `dnf-automatic` e attiva il timer giornaliero delle 6:00.
+- Esegue `dnf upgrade -y` e installa `dnf-automatic`, `curl` e `nano`.
+- Programma il timer `dnf-automatic.timer` ogni giorno all'**orario scelto** (predefinito 06:00), con un ritardo casuale fino a 10 minuti.
+- Chiede se gli aggiornamenti vanno anche **installati** in automatico (`apply_updates = yes`) o solo scaricati (`apply_updates = no`).
 
-### 5 - Modifica Rete
+### 4 - Notifiche e-mail sui backup
+
+Disponibile solo se NethServer 8 è installato, altrimenti compare un avviso. Chiede destinatario e mittente e propone come valori predefiniti quelli già configurati. Gli indirizzi vengono controllati prima di essere salvati.
+
+Poi crea la cartella degli eventi, se manca, e scrive l'hook `20notify` (vedi [Come funzionano le notifiche](#come-funzionano-le-notifiche)).
+
+### 5 - Rete e hostname
 
 Apre `nmtui` (NetworkManager TUI) per configurare interfacce, IP, DNS e hostname.
 
-### 6 - Installa SOLO NethServer 8 senza modifiche
+### 6 - Installa solo NethServer 8
 
-Lancia l'installer ufficiale di NethServer 8 senza toccare swap, aggiornamenti o notifiche. Se NethServer è già presente, non fa nulla.
+Lancia l'installer ufficiale (`https://raw.githubusercontent.com/NethServer/ns8-core/ns8-stable/core/install.sh`) senza toccare il resto del sistema. Al termine chiede se configurare subito le notifiche sui backup. Se NethServer 8 è già presente, non fa nulla.
 
-## Notifiche e-mail sui backup
+## Come funzionano le notifiche
 
-L'hook `20notify` parte a ogni evento `backup-status-changed` del cluster NethServer 8. Ecco cosa fa:
+L'hook `/var/lib/nethserver/cluster/events/backup-status-changed/20notify` parte a ogni evento `backup-status-changed` del cluster NethServer 8. Ecco cosa fa:
 
 - legge i dati dell'evento in JSON (`module_id`, `backup_id`);
 - gira **solo sul nodo leader** del cluster (sui nodi worker esce senza fare nulla);
@@ -94,22 +119,39 @@ Esempio di messaggio:
 The backup status for Backup giornaliero on nextcloud1 has changed to SUCCESS. Please check the system for details.
 ```
 
-Per inviare le mail, il server SMTP deve essere configurato in NethServer 8 (**Impostazioni → Notifiche/SMTP**).
+## Log
+
+L'output di tutte le operazioni viene mostrato a video e salvato in `/var/log/ns8-install.log`. Se un passaggio non riesce, i dettagli sono lì.
 
 ## File modificati sul sistema
 
-| Percorso | Opzioni | Contenuto |
+| Percorso | Voce del menu | Contenuto |
 |---|---|---|
-| `/swapfile` | 1, 2 | File di swap |
-| `/etc/fstab` | 1, 2 | Riga di mount dello swap |
-| `/etc/systemd/system/dnf-automatic.timer.d/override.conf` | 1, 4 | Orario del timer `dnf-automatic` |
-| `/var/lib/nethserver/cluster/events/backup-status-changed/20notify` | 1, 3 | Hook delle notifiche backup |
+| `/swapfile` | Swap | File di swap |
+| `/etc/fstab` (+ `/etc/fstab.bak-ns8-install`) | Swap | Riga di mount dello swap |
+| `/etc/systemd/system/dnf-automatic.timer.d/override.conf` | Aggiornamenti | Orario del timer |
+| `/etc/dnf/automatic.conf` | Aggiornamenti | Valore di `apply_updates` |
+| `/var/lib/nethserver/cluster/events/backup-status-changed/20notify` | Notifiche | Hook delle notifiche backup |
+| `/var/log/ns8-install.log` | Tutte | Log delle operazioni |
 
-## Note e limitazioni
+## Novità della 3.0 rispetto alla 2.0
 
-- Lo script usa `set -e`: si interrompe al primo comando che fallisce.
-- Non verifica di essere eseguito come root: avvialo con `sudo` o da utente root.
-- Ogni volta che crei o modifichi lo swap, aggiunge **una nuova riga** a `/etc/fstab`, anche se c'è già. Dopo più modifiche conviene controllare il file ed eliminare i duplicati.
-- `dnf-automatic` usa la configurazione di `/etc/dnf/automatic.conf`. Su Rocky Linux l'impostazione predefinita è `apply_updates = no`, quindi gli aggiornamenti vengono solo scaricati. Per installarli in automatico, imposta `apply_updates = yes`.
-- L'hook delle notifiche va nella cartella degli eventi del cluster NethServer. Se la cartella non esiste ancora, la scrittura fallisce e lo script si ferma (per via di `set -e`).
-- Gli indirizzi e-mail non vengono validati: viene controllato solo che non siano vuoti.
+- Interfaccia a finestre con `whiptail`, in stile `raspi-config`
+- Installazione guidata con scelta delle operazioni, riepilogo prima di procedere ed esito finale
+- Le notifiche vengono configurate dopo l'installazione di NS8; la cartella degli eventi viene creata se manca, quindi non dà più errore
+- Controllo dei permessi di root e installazione automatica di `whiptail`
+- Nessuna riga duplicata in `/etc/fstab`
+- Controllo dello spazio su disco prima di creare lo swap
+- Orario degli aggiornamenti e `apply_updates` configurabili; il nuovo orario sostituisce quello predefinito del timer invece di aggiungersi
+- Controllo del formato degli indirizzi e-mail
+- Log delle operazioni in `/var/log/ns8-install.log`
+- Fine riga sempre LF per gli script (`.gitattributes`)
+
+## Versione 2.0
+
+`ns8-install-2.0.sh` resta disponibile, con il menu testuale originale. Ha però dei limiti noti, risolti nella 3.0:
+
+- aggiunge una nuova riga a `/etc/fstab` ogni volta che si modifica lo swap;
+- non verifica i permessi di root;
+- configurare le notifiche fallisce se la cartella degli eventi di NethServer non esiste;
+- lascia `apply_updates` al valore predefinito di Rocky Linux (`no`): gli aggiornamenti vengono solo scaricati.
